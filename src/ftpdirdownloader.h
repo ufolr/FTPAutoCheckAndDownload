@@ -41,6 +41,7 @@ signals:
 public slots:
     void checkAndDownLoad(quint64 num);
     void fileGot(bool isGot);
+    void reDownload(bool isConnected);
 private:
     FtpClient * fc;
     QString hostName;

@@ -11,6 +11,7 @@ FtpClient::FtpClient(QObject *parent) :
     QObject(parent)
 {
     m_file =NULL;
+    m_isReConnect = false;
     m_ftp = new QFtp(this);
     setPort("21");//设置默认端口
     setUserName("anonymous");
@@ -18,18 +19,32 @@ FtpClient::FtpClient(QObject *parent) :
     m_timeOut = new QTimer(this);
     connect(m_timeOut,SIGNAL(timeout()),this,SLOT(handleTimeOut()));
     //当每条命令开始执行时发出相应的信号
-    connect(m_ftp,SIGNAL(commandFinished(int ,bool)),this,SLOT(slot_ftpCommandFinished(int,bool)));
-    connect(m_ftp,SIGNAL(commandStarted(int)), this,SLOT(slot_ftpCommandStarted(int)));
-    connect(m_ftp,SIGNAL(dataTransferProgress(qint64,qint64)),this,SIGNAL(dataTransferProgress(qint64,qint64)));
-    connect(m_ftp,SIGNAL(dataTransferProgress(qint64,qint64)),this,SLOT(timeOutWatcher(qint64,qint64)));
-    connect(m_ftp,SIGNAL(stateChanged(int)),this,SLOT(statusChanged(int)));
-    connect(m_ftp,SIGNAL(listInfo(QUrlInfo)),this,SLOT(addToFileList(QUrlInfo)));
+    makeFTPConnection(m_ftp);
+    connect(this,SIGNAL(listGot(quint64)),this,SLOT(listGotclot(quint64)));
+}
+
+FtpClient::FtpClient(const FtpClient& fc)
+{
+    m_file = NULL;
+    m_isReConnect = false;
+    m_ftp = new QFtp(this);
+    m_addr = fc.getAddr();
+    m_port = fc.getPort();
+    m_userName = fc.getUser();
+    m_password = fc.getPwd();
+    m_fileName = fc.getFileName();
+    m_timeOut = new QTimer(this);
+    m_lastDown = fc.m_lastDown;
+    m_fileListLength = fc.m_fileListLength;
+    connect(m_timeOut,SIGNAL(timeout()),this,SLOT(handleTimeOut()));
+    //当每条命令开始执行时发出相应的信号
+    this->makeFTPConnection(m_ftp);
     connect(this,SIGNAL(listGot(quint64)),this,SLOT(listGotclot(quint64)));
 }
 
 FtpClient::~FtpClient()
 {
-    m_file->deleteLater();
+    delete m_file;
 }
 
 int FtpClient::ftpConnect()
@@ -54,6 +69,16 @@ void FtpClient::ftpClose()
     m_ftp->close();
 }
 
+void FtpClient::makeFTPConnection(QFtp* pQFtp)
+{
+    connect(pQFtp,SIGNAL(commandFinished(int ,bool)),this,SLOT(slot_ftpCommandFinished(int,bool)));
+    connect(pQFtp,SIGNAL(commandStarted(int)), this,SLOT(slot_ftpCommandStarted(int)));
+    connect(pQFtp,SIGNAL(dataTransferProgress(qint64,qint64)),this,SIGNAL(dataTransferProgress(qint64,qint64)));
+    connect(pQFtp,SIGNAL(dataTransferProgress(qint64,qint64)),this,SLOT(timeOutWatcher(qint64,qint64)));
+    connect(pQFtp,SIGNAL(stateChanged(int)),this,SLOT(statusChanged(int)));
+    connect(pQFtp,SIGNAL(listInfo(QUrlInfo)),this,SLOT(addToFileList(QUrlInfo)));
+}
+
 void FtpClient::getFile(const QString &ftpFileName)
 {
 //    if(QFile::exists(m_fileName))//判断文件是否存在
@@ -75,7 +100,11 @@ void FtpClient::getFile(const QString &ftpFileName)
     }
     //m_ftpStatus = tr("文件:%1创建成功。").arg(m_fileName);
     m_ftp->get(ftpFileName,m_file);
+
+    if(m_timeOut->isActive())
+        m_timeOut->stop();
     m_timeOut->start(15000);//超时时间
+
     emit ftpDownloading();
 }
 
@@ -99,6 +128,10 @@ void FtpClient::slot_ftpCommandStarted(int)
         m_ftpStatus = tr("正在关闭连接…");
     }
     emit ftpCommandStatus(m_ftpStatus);
+
+    if(m_timeOut->isActive())
+        m_timeOut->stop();
+    m_timeOut->start(15000);
 }
 
 void FtpClient::slot_ftpCommandFinished(int commandId, bool error)
@@ -106,24 +139,70 @@ void FtpClient::slot_ftpCommandFinished(int commandId, bool error)
     //格式化状态信息
     if (m_ftp->currentCommand() == QFtp::ConnectToHost)
     {
-        if (error) {
-            m_ftpStatus = tr("无法连接FTP服务器:%1").arg(m_addr);
+        if (error)
+        {
+            if(m_isReConnect)//重连
+            {
+                emit ftpReConnected(false);
+            }
+            else
+            {
+                m_ftpStatus = tr("无法连接FTP服务器:%1").arg(m_addr);
 
-            emit ftpConnected(false);
-            return;
+                emit ftpConnected(false);
+            }
+        }
+        else
+        {
+            if(m_isReConnect)//重连
+            {
+                emit ftpReConnected(true);
+            }
+            else
+            {
+                m_ftpStatus = tr("成功连接FTP服务器:%1").arg(m_addr);
+                emit ftpConnected(true);
+            }
         }
     }
     if(m_ftp->currentCommand() == QFtp::Login)
     {
-        m_ftpStatus = tr("成功连接上FTP服务器：%1 ").arg(m_addr);
-        emit ftpConnected(true);
+        if(error)
+        {
+            if(m_isReConnect)//重连
+            {
+                m_isReConnect = false;
+                m_ftpStatus = tr("登录FTP服务器：%1失败:%2 ").arg(m_addr).arg(m_ftp->errorString());
+                emit ftpReLogined(false);
+            }
+            else
+            {
+                m_ftpStatus = tr("登录FTP服务器：%1失败 ").arg(m_addr);
+                emit ftpLogined(false);
+            }
+        }
+        else
+        {
+            if(m_isReConnect)//重连
+            {
+                m_isReConnect = false;
+                m_ftpStatus = tr("成功重登FTP服务器：%1 ").arg(m_addr);
+                emit ftpReLogined(true);
+            }
+            else
+            {
+                m_ftpStatus = tr("成功登录FTP服务器：%1 ").arg(m_addr);
+                emit ftpLogined(true);
+            }
+        }
     }
     qDebug()<<"command"<<m_ftp->currentCommand();
     if(m_ftp->currentCommand() == QFtp::Get)
     {
         if(error)
         {
-            m_ftpStatus = tr("下载文件:%1出错。").arg(m_file->fileName());
+            m_ftpStatus = tr("下载文件:%1出错:%2").arg(m_file->fileName()).arg(m_ftp->errorString());
+            m_ftp->abort();
             m_file->close();
             m_file->remove();
             //this->deleteLater();
@@ -165,12 +244,17 @@ void FtpClient::statusChanged(int i)
 void FtpClient::handleTimeOut()
 {
     m_ftpStatus = tr("下载超时");
-    emit ftpGot(false);
+
     qDebug()<<"timeout...";
-    m_timeOut->stop();
+    if(m_timeOut->isActive())//重置超时
+    {
+        m_timeOut->stop();
+    }
     m_ftp->abort();
     m_file->close();
     m_file->remove();
+
+    emit ftpGot(false);
 
     //this->deleteLater();
 }

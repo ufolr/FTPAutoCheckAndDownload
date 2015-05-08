@@ -1,4 +1,4 @@
-#include "ftpdirdownloader.h"
+﻿#include "ftpdirdownloader.h"
 #include "ftpclient.h"
 #include <QDebug>
 #include <QFile>
@@ -8,29 +8,11 @@ FtpDirDownLoader::FtpDirDownLoader(QObject *parent) : QObject(parent)
 {
     fc = new FtpClient(this);
     sql = new SqlLteInfo();
-//    setHost("10.128.86.4");
-//    setPort("21");
-//    setUser("anonymous");
-//    setPwd("anonymous");
-//    fc->ftpConnect();
-
-//    fc->setFileName("F:/Temp/ftp/xz.php.fdl");
-//    fc->getFile("www/xz.php");
-
-//    setDownLoadDir("micaps/surface/N/");
-//    setSaveDir("F:/Temp/ftp/");
-//    getDirList();
 
     QDateTime fdt = QDateTime::fromString("2015-3-18-15:20:17","yyyy-M-d-H:m:s");
 
-//    qDebug()<<"SQL1"<<sql.checkFileName("1.txt");
-//    qDebug()<<"SQL2"<<sql.checkFileName("1");
-//    qDebug()<<"SQL3"<<sql.checkFileSize(1);
-//    qDebug()<<"SQL4"<<sql.checkFileSize(2);
-//    qDebug()<<"SQL5"<<sql.checkLastModified(fdt)；
     connect(fc,SIGNAL(ftpConnected(bool)),this,SIGNAL(ftpConnected(bool)));
     connect(fc,SIGNAL(ftpCommandStatus(QString)),this,SIGNAL(ftpCommandStatus(QString)));
-
 }
 
 FtpDirDownLoader::~FtpDirDownLoader()
@@ -193,6 +175,24 @@ void FtpDirDownLoader::fileGot(bool isGot)
         }
     }
     else//接收到下载失败信号
+    {
+        qDebug()<<"redownload";
+        //构造新的fc
+        FtpClient* pFC = fc;
+        fc = new FtpClient(*fc);
+        //connect(fc,SIGNAL(ftpConnected(bool)),this,SIGNAL(ftpConnected(bool)));
+        connect(fc,SIGNAL(ftpCommandStatus(QString)),this,SIGNAL(ftpCommandStatus(QString)));
+        connect(fc,SIGNAL(ftpGot(bool)),this,SLOT(fileGot(bool)));
+        connect(fc,SIGNAL(ftpReLogined(bool)),this,SLOT(reDownload(bool)));
+        fc->setReConnect(true);
+        fc->ftpConnect();
+        delete pFC;
+    }
+}
+
+void FtpDirDownLoader::reDownload(bool isConnected)
+{
+    if(isConnected)
     {
         if(!fileList.isEmpty())
             downLoadFile();

@@ -14,38 +14,12 @@
 
 Setting *Setting::instance = NULL;
 
-Setting::Setting(QObject *parent) /*:
-    QSettings("config.xml", XmlFormat, parent)*/
+Setting::Setting(QObject *parent) 
 {
-
-//    QSettings::Format XmlFormat = QSettings::registerFormat("xml", readXmlFile, writeXmlFile);
-//    QSettings("connfig.xml",XmlFormat,parent);
     m_ftpTaskPos = 0;
     m_httpTaskPos =0;
     m_TaskTriedTime = 0;
     m_taskPos =0;
-
-	//创建测试用的任务
-
-//    Task t4;
-//    t4.taskName = "tsst4";
-//    t4.startby = Task::Day;
-//    t4.start_month =0;
-//    t4.start_day = 1;
-//    t4.Host = "10.10.3.198";
-//    t4.port = "21";
-//    t4.user = "anonymous";
-//    t4.pwd = "anonymous";
-//    t4.Dir = "/1/";
-//    t4.saveDir = "F:/Temp/ftp/3/";
-//    t4.lastDownFileTime = QDateTime::fromString("2015-3-18,15:20:17","yyyy-M-d,H:m:s");
-//    t4.creatDate = QDate::currentDate();
-
-//    m_DownLoadTaskList.append(t1);
-//    m_DownLoadTaskList.append(t2);
-//    m_DownLoadTaskList.append(t3);
-//    m_DownLoadTaskList.append(t4);
-    //this->writeXMLSetting("tasks.xml");
 
     m_AutoRunStatus = false;
     readXMLSetting("tasks.xml");
